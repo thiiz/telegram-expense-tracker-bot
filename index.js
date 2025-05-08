@@ -11,24 +11,25 @@ const telegram = new Telegram(process.env.BOT_TOKEN);
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-// Armazenamento simples para gastos (em memória)
+// Armazenamento simples para vendas (em memória)
 // Em uma aplicação real, você usaria um banco de dados
-const expensesStorage = {};
-const expenseIdCounter = {}; // Contador de IDs por chat
+const salesStorage = {};
+const salesIdCounter = {}; // Contador de IDs por chat
 
 // Comando de início
 bot.start((ctx) => {
   ctx.reply(
-    'Bem-vindo ao Bot de Controle de Gastos! 💰\n\n' +
-    'Para registrar um gasto, você pode:\n' +
+    'Bem-vindo ao Bot de Controle de Vendas! 💰\n\n' +
+    'Para registrar uma venda, você pode:\n' +
     '• Usar formato simples: "Café 5.50" ou "Pizza 25"\n' +
-    '• Usar linguagem natural: "Gastei 35 com jantar" ou "Paguei 12,50 pelo almoço"\n\n' +
+    '• Usar linguagem natural: "Vendi 35 em café" ou "Recebi 12,50 pelo bolo"\n' +
+    '• Informar quantidade: "Vendi 4 camisetas por 40 reais"\n\n' +
     'Use os botões abaixo ou os comandos:\n' +
     '/start - Exibe esta mensagem de ajuda\n' +
-    '/resumo - Exibe o resumo dos gastos de hoje\n' +
-    '/total - Exibe o total gasto este mês\n' +
-    '/analise - Análise dos seus gastos recentes usando IA\n' +
-    '/remove [id] - Remove um gasto pelo seu ID',
+    '/resumo - Exibe o resumo das vendas de hoje\n' +
+    '/total - Exibe o total vendido este mês\n' +
+    '/analise - Análise das suas vendas recentes usando IA\n' +
+    '/remove [id] - Remove uma venda pelo seu ID',
     {
       reply_markup: {
         inline_keyboard: [
@@ -52,13 +53,13 @@ bot.action('resumo', async (ctx) => {
     await ctx.answerCbQuery('Buscando resumo diário...');
 
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, 1);
+    const sales = getSalesFromStorage(chatId, 1);
 
-    if (expenses.length === 0) {
-      return ctx.editMessageText('Você não registrou nenhum gasto hoje.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.editMessageText('Você não registrou nenhuma venda hoje.', getMainKeyboard());
     }
 
-    const summary = formatExpensesSummary(expenses);
+    const summary = formatSalesSummary(sales);
     ctx.editMessageText(summary, getResumoKeyboard());
   } catch (error) {
     console.error('Erro ao buscar resumo:', error);
@@ -76,14 +77,14 @@ bot.action('total', async (ctx) => {
     const daysToFetch = Math.min(30, currentDay);
 
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, daysToFetch);
+    const sales = getSalesFromStorage(chatId, daysToFetch);
 
-    if (expenses.length === 0) {
-      return ctx.editMessageText('Você não registrou nenhum gasto este mês.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.editMessageText('Você não registrou nenhuma venda este mês.', getMainKeyboard());
     }
 
-    const total = expenses.reduce((sum, expense) => sum + expense.price, 0);
-    ctx.editMessageText(`Total gasto neste mês: R$ ${total.toFixed(2)}`, getMainKeyboard());
+    const total = sales.reduce((sum, sale) => sum + sale.price, 0);
+    ctx.editMessageText(`Total vendido neste mês: R$ ${total.toFixed(2)}`, getMainKeyboard());
   } catch (error) {
     console.error('Erro ao calcular total:', error);
     ctx.answerCbQuery('Ocorreu um erro. Tente novamente.');
@@ -94,29 +95,29 @@ bot.action('analise', async (ctx) => {
   try {
     // Responde ao callback imediatamente
     await ctx.answerCbQuery();
-    await ctx.editMessageText('🧠 Analisando seus gastos... Aguarde um momento.', getMainKeyboard());
+    await ctx.editMessageText('🧠 Analisando suas vendas... Aguarde um momento.', getMainKeyboard());
 
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, 30);
+    const sales = getSalesFromStorage(chatId, 30);
 
-    if (expenses.length === 0) {
-      return ctx.editMessageText('Você não possui gastos registrados para análise.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.editMessageText('Você não possui vendas registradas para análise.', getMainKeyboard());
     }
 
-    const expensesData = expenses.map(e => `${e.product}: R$ ${e.price.toFixed(2)}`).join('\n');
-    const total = expenses.reduce((sum, e) => sum + e.price, 0);
+    const salesData = sales.map(s => `${s.product}: R$ ${s.price.toFixed(2)}`).join('\n');
+    const total = sales.reduce((sum, s) => sum + s.price, 0);
 
     const prompt = `
-Analise os seguintes gastos de um usuário nos últimos 30 dias:
+Analise os seguintes dados de vendas de um usuário nos últimos 30 dias:
 
-${expensesData}
+${salesData}
 
 Total: R$ ${total.toFixed(2)}
 
 Forneça:
-1. Uma análise concisa dos padrões de gastos
-2. Sugestões para possíveis economias
-3. Categorias com maior gasto
+1. Uma análise concisa dos padrões de vendas
+2. Sugestões para possíveis melhoras nas vendas
+3. Produtos com maior lucro
 
 Responda em português, de forma amigável e objetiva, em até 500 caracteres.
 Não formate sua resposta com markdown ou blocos de código.
@@ -125,7 +126,7 @@ Não formate sua resposta com markdown ou blocos de código.
     const result = await model.generateContent(prompt);
     const response = result.response.text();
 
-    ctx.editMessageText(`📊 *Análise de Gastos* 📊\n\n${response}`, {
+    ctx.editMessageText(`📊 *Análise de Vendas* 📊\n\n${response}`, {
       parse_mode: 'Markdown',
       ...getMainKeyboard()
     });
@@ -138,21 +139,23 @@ Não formate sua resposta com markdown ou blocos de código.
 bot.action('ajuda', async (ctx) => {
   await ctx.answerCbQuery('Exibindo ajuda...');
   ctx.editMessageText(
-    'Como usar o Bot de Controle de Gastos 💰\n\n' +
-    '1️⃣ *Para registrar um gasto*:\n' +
+    'Como usar o Bot de Controle de Vendas 💰\n\n' +
+    '1️⃣ *Para registrar uma venda*:\n' +
     'Você pode usar um dos seguintes formatos:\n' +
     '• Formato simples: "Café 5.50" ou "Pizza R$25"\n' +
-    '• Linguagem natural: "Gastei 15 com almoço" ou\n' +
-    '  "Paguei 45 reais pelo Uber hoje"\n\n' +
+    '• Linguagem natural: "Vendi 15 em café" ou\n' +
+    '  "Recebi 45 reais pelo bolo hoje"\n' +
+    '• Com quantidade: "Vendi 4 camisetas por 40 reais"\n' +
+    '  (Registra 4 itens de 10 reais cada)\n\n' +
     '2️⃣ *Para ver o resumo diário*:\n' +
     'Clique no botão "📊 Resumo Diário" ou use /resumo\n\n' +
     '3️⃣ *Para ver o total mensal*:\n' +
     'Clique no botão "💰 Total Mensal" ou use /total\n\n' +
-    '4️⃣ *Para análise de gastos com IA*:\n' +
+    '4️⃣ *Para análise de vendas com IA*:\n' +
     'Clique no botão "🧠 Análise IA" ou use /analise\n\n' +
-    '5️⃣ *Para remover um gasto*:\n' +
+    '5️⃣ *Para remover uma venda*:\n' +
     'Use o comando /remove [id] ou use o botão ❌\n' +
-    'após registrar um gasto',
+    'após registrar uma venda',
     {
       parse_mode: 'Markdown',
       ...getMainKeyboard()
@@ -183,13 +186,13 @@ function getMainKeyboard() {
 bot.command('resumo', async (ctx) => {
   try {
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, 1);
+    const sales = getSalesFromStorage(chatId, 1);
 
-    if (expenses.length === 0) {
-      return ctx.reply('Você não registrou nenhum gasto hoje.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.reply('Você não registrou nenhuma venda hoje.', getMainKeyboard());
     }
 
-    const summary = formatExpensesSummary(expenses);
+    const summary = formatSalesSummary(sales);
     ctx.reply(summary, getResumoKeyboard());
   } catch (error) {
     console.error('Erro ao buscar resumo:', error);
@@ -206,61 +209,63 @@ bot.command('total', async (ctx) => {
     const daysToFetch = Math.min(30, currentDay);
 
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, daysToFetch);
+    const sales = getSalesFromStorage(chatId, daysToFetch);
 
-    if (expenses.length === 0) {
-      return ctx.reply('Você não registrou nenhum gasto este mês.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.reply('Você não registrou nenhuma venda este mês.', getMainKeyboard());
     }
 
-    const total = expenses.reduce((sum, expense) => sum + expense.price, 0);
-    ctx.reply(`Total gasto neste mês: R$ ${total.toFixed(2)}`, getMainKeyboard());
+    const total = sales.reduce((sum, sale) => sum + sale.price, 0);
+    ctx.reply(`Total vendido neste mês: R$ ${total.toFixed(2)}`, getMainKeyboard());
   } catch (error) {
     console.error('Erro ao calcular total:', error);
     ctx.reply('Ocorreu um erro ao calcular o total. Tente novamente.', getMainKeyboard());
   }
 });
 
-// Comando para análise de gastos com IA
+// Comando para análise de vendas com IA
 bot.command('analise', async (ctx) => {
   try {
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, 30);
+    const sales = getSalesFromStorage(chatId, 30);
 
-    if (expenses.length === 0) {
-      return ctx.reply('Você não possui gastos registrados para análise.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.reply('Você não possui vendas registradas para análise.', getMainKeyboard());
     }
 
-    // Prepara os dados para o modelo
-    const expensesData = expenses.map(e => `${e.product}: R$ ${e.price.toFixed(2)}`).join('\n');
-    const total = expenses.reduce((sum, e) => sum + e.price, 0);
-
     // Enviando mensagem de aguarde
-    const waitingMessage = await ctx.reply('🧠 Analisando seus gastos... Aguarde um momento.', getMainKeyboard());
+    const waitingMessage = await ctx.reply('🧠 Analisando suas vendas... Aguarde um momento.', getMainKeyboard());
+
+    // Prepara os dados para o modelo
+    const salesData = sales.map(s => `${s.product}: R$ ${s.price.toFixed(2)}`).join('\n');
+    const total = sales.reduce((sum, s) => sum + s.price, 0);
 
     // Constrói o prompt para o Gemini
     const prompt = `
-Analise os seguintes gastos de um usuário nos últimos 30 dias:
+Analise os seguintes dados de vendas de um usuário nos últimos 30 dias:
 
-${expensesData}
+${salesData}
 
 Total: R$ ${total.toFixed(2)}
 
 Forneça:
-1. Uma análise concisa dos padrões de gastos
-2. Sugestões para possíveis economias
-3. Categorias com maior gasto
+1. Uma análise concisa dos padrões de vendas
+2. Sugestões para possíveis melhoras nas vendas
+3. Produtos com maior lucro
 
 Responda em português, de forma amigável e objetiva, em até 500 caracteres.
 Não formate sua resposta com markdown ou blocos de código.
 `;
 
-    // Obtém análise do Gemini
+    // Usando Gemini para obter análise
     const result = await model.generateContent(prompt);
     const response = result.response.text();
 
-    // Envia a resposta e deleta a mensagem de espera
-    await ctx.telegram.deleteMessage(chatId, waitingMessage.message_id);
-    ctx.reply(`📊 *Análise de Gastos* 📊\n\n${response}`, {
+    // Remove a mensagem de aguarde
+    await ctx.telegram.deleteMessage(chatId, waitingMessage.message_id).catch(e => console.error('Erro ao deletar mensagem:', e));
+
+    // Envia a análise
+    await ctx.reply(`📊 *Análise de Vendas* 📊\n\n${response}`, {
       parse_mode: 'Markdown',
       ...getMainKeyboard()
     });
@@ -270,268 +275,232 @@ Não formate sua resposta com markdown ou blocos de código.
   }
 });
 
-// Processar mensagens de texto (registrar gastos)
-bot.on('text', async (ctx) => {
-  const text = ctx.message.text;
-
-  // Ignora comandos
-  if (text.startsWith('/')) return;
-
-  try {
-    // Primeiro tenta o formato padrão
-    const match = text.match(/(.+?)\s*(?:R?\$?\s*)?\s*([0-9]+[.,]?[0-9]*)$/i);
-
-    if (match) {
-      // Formato padrão detectado, processa normalmente
-      let product = match[1].trim();
-      // Normaliza o preço (substitui vírgula por ponto)
-      const price = parseFloat(match[2].replace(',', '.'));
-
-      await processExpense(ctx, product, price);
-    } else {
-      // Tenta usar IA para interpretar a entrada em linguagem natural
-      await ctx.reply('🧠 Interpretando sua mensagem... Aguarde um momento.');
-
-      const prompt = `
-Analise a seguinte mensagem de despesa em português e extraia o item/serviço e o valor:
-"${text}"
-
-Exemplos de entradas e suas interpretações:
-1. "Gastei com café hoje 5 reais" → item: café, valor: 5
-2. "Paguei a conta de luz de 150,90" → item: conta de luz, valor: 150.90
-3. "Almocei por 32 reais" → item: almoço, valor: 32
-4. "Uber 25" → item: uber, valor: 25
-5. "Fiz compras no mercado, deu 175,50" → item: compras mercado, valor: 175.50
-
-Responda APENAS com um JSON no formato:
-{
-  "item": "nome do item ou serviço",
-  "valor": número (com ponto como separador decimal)
-}
-
-Se não for possível extrair tanto o item quanto o valor, responda com:
-{
-  "erro": "Não foi possível identificar o item e valor"
-}
-
-IMPORTANTE: Não inclua formatação markdown, blocos de código ou outras marcações. Responda apenas com o objeto JSON puro.
-`;
-
-      // Usando Gemini para interpretar a entrada
-      const result = await model.generateContent(prompt);
-      const aiResponse = result.response.text().trim();
-
-      try {
-        // Remover possíveis marcações markdown da resposta
-        let cleanResponse = aiResponse;
-        if (cleanResponse.includes('```')) {
-          // Remove blocos de código, pegando apenas o conteúdo dentro do bloco
-          cleanResponse = cleanResponse.replace(/```(?:json)?([^`]*)```/gs, '$1').trim();
-        }
-
-        // Tenta analisar a resposta como JSON
-        const parsedResponse = JSON.parse(cleanResponse);
-
-        if (parsedResponse.erro) {
-          // IA não conseguiu interpretar
-          ctx.reply(
-            'Não consegui entender sua mensagem. Por favor, use um formato como:\n' +
-            '"Café 5.50" ou "Pizza R$25" ou "Almoço R$15,90"',
-            getMainKeyboard()
-          );
-        } else {
-          // Extraiu item e valor com sucesso
-          const product = parsedResponse.item;
-          const price = parsedResponse.valor;
-
-          // Codifica o produto em base64 para evitar problemas com caracteres especiais no callback_data
-          const encodedProduct = Buffer.from(product).toString('base64');
-
-          // Confirma com o usuário
-          ctx.reply(
-            `Entendi que você gastou R$ ${price.toFixed(2)} com "${product}". Está correto?`,
-            {
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    { text: '✅ Sim, registrar', callback_data: `confirm_${encodedProduct}_${price}` },
-                    { text: '❌ Não, cancelar', callback_data: 'cancel_expense' }
-                  ]
-                ]
-              }
-            }
-          );
-        }
-      } catch (error) {
-        console.error('Erro ao interpretar resposta da IA:', error);
-        ctx.reply(
-          'Desculpe, houve um erro ao interpretar sua mensagem. Por favor, tente novamente usando um formato como:\n' +
-          '"Café 5.50" ou "Pizza R$25"',
-          getMainKeyboard()
-        );
-      }
-    }
-  } catch (error) {
-    console.error('Erro ao processar mensagem:', error);
-    ctx.reply('Ocorreu um erro ao processar sua mensagem. Tente novamente.');
-  }
-});
-
 // Adicionar handlers para confirmação de despesa
-bot.action(/confirm_(.+)_([0-9.]+)/, async (ctx) => {
+bot.action(/confirm_([^_]+)_(\d+(?:\.\d+)?)(?:_(\d+))?/, async (ctx) => {
   try {
-    await ctx.answerCbQuery('Registrando gasto...');
+    await ctx.answerCbQuery('Registrando venda...');
 
     // Decodifica o produto de base64
     const encodedProduct = ctx.match[1];
     const product = Buffer.from(encodedProduct, 'base64').toString();
-    const price = parseFloat(ctx.match[2]);
 
-    await processExpense(ctx, product, price);
+    // Extrai o preço total e a quantidade do callback_data
+    const totalPrice = parseFloat(ctx.match[2]);
+    const quantity = ctx.match[3] ? parseInt(ctx.match[3]) : 1;
+
+    // Debug para verificar os valores extraídos
+    console.log(`Callback data: ${ctx.callbackQuery.data}`);
+    console.log(`Match groups: ${JSON.stringify(ctx.match)}`);
+    console.log(`Confirmação: produto=${product}, preço total=${totalPrice}, quantidade=${quantity}`);
+
+    // Validação adicional
+    if (isNaN(totalPrice) || totalPrice <= 0) {
+      console.error(`Erro: Preço total inválido: ${totalPrice}`);
+      return ctx.reply('Erro: O preço total é inválido. Por favor, tente novamente.');
+    }
+
+    if (isNaN(quantity) || quantity <= 0) {
+      console.error(`Erro: Quantidade inválida: ${quantity}`);
+      return ctx.reply('Erro: A quantidade é inválida. Por favor, tente novamente.');
+    }
+
+    if (quantity === 1) {
+      // Caso de venda única
+      await processSale(ctx, product, totalPrice);
+    } else {
+      // Caso de múltiplas vendas - importante: dividir o preço total pela quantidade
+      const individualPrice = totalPrice / quantity;
+      console.log(`Preço individual calculado: ${individualPrice}`);
+
+      const registeredIds = [];
+      const promises = [];
+
+      // Registra cada item individualmente com o preço correto
+      for (let i = 0; i < quantity; i++) {
+        // Usamos Promise.all para garantir que todos os itens sejam processados
+        promises.push(
+          processSale(ctx, product, individualPrice, false)
+            .then(saleId => {
+              if (saleId) {
+                registeredIds.push(saleId);
+                console.log(`Item ${i + 1}/${quantity} registrado com ID ${saleId}`);
+              } else {
+                console.error(`Falha ao registrar item ${i + 1}/${quantity}`);
+              }
+            })
+            .catch(err => {
+              console.error(`Erro ao registrar item ${i + 1}/${quantity}:`, err);
+            })
+        );
+      }
+
+      // Aguarda todas as vendas serem registradas
+      await Promise.all(promises);
+      console.log(`Todos os ${quantity} itens registrados. IDs: ${registeredIds.join(', ')}`);
+
+      if (registeredIds.length === 0) {
+        return ctx.reply('Erro: Não foi possível registrar as vendas. Por favor, tente novamente.');
+      }
+
+      // Envia mensagem de confirmação após registrar todos os itens
+      const chatId = ctx.chat.id.toString();
+      const idsText = registeredIds.length > 0 ? `IDs: #${registeredIds.join(', #')}` : '';
+
+      ctx.reply(
+        `✅ Registrado: ${quantity}x ${product} - Total: R$ ${totalPrice.toFixed(2)} (R$ ${individualPrice.toFixed(2)} cada)` +
+        (idsText ? `\n${idsText}` : ''),
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📊 Ver Resumo', callback_data: 'resumo' },
+                { text: '➕ Adicionar Mais', callback_data: 'adicionar' }
+              ]
+            ]
+          }
+        }
+      );
+    }
 
     // Remover a mensagem de confirmação
     await ctx.deleteMessage();
   } catch (error) {
-    console.error('Erro ao confirmar despesa:', error);
-    ctx.answerCbQuery('Ocorreu um erro. Tente novamente.');
+    console.error('Erro ao confirmar venda:', error);
+    ctx.reply('Ocorreu um erro ao processar a venda. Por favor, tente novamente.');
   }
 });
 
-bot.action('cancel_expense', async (ctx) => {
+bot.action('cancel_sale', async (ctx) => {
   await ctx.answerCbQuery('Operação cancelada');
   await ctx.editMessageText('Operação cancelada. Tente novamente com um formato como:\n"Café 5.50" ou "Pizza R$25"', getMainKeyboard());
 });
 
-// Função para processar despesa
-async function processExpense(ctx, product, price) {
+// Função para processar venda
+async function processSale(ctx, product, price, sendMessage = true) {
   try {
-    // Formata o nome do produto usando IA antes de salvar
-    const prompt = `
-    Formate o nome deste item de despesa para ser consistente e organizado: "${product}".
-    Use apenas letras minúsculas, corrija erros ortográficos óbvios, e padronize o nome.
-    Não adicione informações extras, apenas retorne o nome formatado.
-    Exemplos: "cafe" → "café", "refri coca" → "refrigerante coca-cola", "almoço restaurante" → "almoço".
-    Responda apenas com o texto formatado, sem explicações.
-    `;
-
-    // Usando Gemini para formatar o texto
-    const result = await model.generateContent(prompt);
-    const formattedProduct = result.response.text().trim();
-
-    // Se o AI retornou algo vazio ou muito diferente, mantém o original
-    if (!formattedProduct || formattedProduct.length > product.length * 2) {
-      console.log("Usando produto original devido a formatação problemática:", product);
-    } else {
-      product = formattedProduct;
-      console.log("Produto formatado pela IA:", product);
+    // Verifica se o preço é válido
+    if (isNaN(price) || price <= 0) {
+      console.error("Preço inválido:", price);
+      if (sendMessage) {
+        ctx.reply('Erro: Preço inválido. Por favor, tente novamente com um valor válido.');
+      }
+      return null;
     }
 
-    // Salva a despesa no armazenamento
+    // Formata o valor para garantir que seja um número
+    const numericPrice = Number(price);
+    console.log(`Processando venda: ${product} - R$ ${numericPrice.toFixed(2)}`);
+
+    // Para vendas em lote, reduz o uso de IA para formatação para melhorar performance
+    let formattedProduct = product;
+
+    // Apenas usa IA para formatação no primeiro item (quando sendMessage é true)
+    // ou em vendas únicas para reduzir overhead
+    if (sendMessage) {
+      try {
+        const prompt = `
+        Formate o nome deste item de venda para ser consistente e organizado: "${product}".
+        Use apenas letras minúsculas, corrija erros ortográficos óbvios, e padronize o nome.
+        Não adicione informações extras, apenas retorne o nome formatado.
+        Exemplos: "cafe" → "café", "refri coca" → "refrigerante coca-cola", "almoço restaurante" → "almoço".
+        Responda apenas com o texto formatado, sem explicações.
+        `;
+
+        // Usando Gemini para formatar o texto
+        const result = await model.generateContent(prompt);
+        const aiFormattedProduct = result.response.text().trim();
+
+        // Se o AI retornou algo vazio ou muito diferente, mantém o original
+        if (aiFormattedProduct && aiFormattedProduct.length <= product.length * 2) {
+          formattedProduct = aiFormattedProduct;
+          console.log("Produto formatado pela IA:", formattedProduct);
+        }
+      } catch (formatError) {
+        console.error("Erro ao formatar produto com IA:", formatError);
+        // Continua com o produto original em caso de erro
+      }
+    }
+
+    // Salva a venda no armazenamento
     const chatId = ctx.chat.id.toString();
-    const expense = {
-      product,
-      price,
+    const sale = {
+      product: formattedProduct,
+      price: numericPrice,  // Garante que é um número
       date: new Date()
     };
 
-    const expenseId = saveExpense(chatId, expense);
+    const saleId = saveSale(chatId, sale);
+    console.log(`Venda salva: ID=${saleId}, Produto=${formattedProduct}, Preço=${numericPrice}`);
 
-    ctx.reply(`✅ Registrado: #${expenseId} - ${product} - R$ ${price.toFixed(2)}\n\nPara remover, use /remove ${expenseId}`, {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '📊 Ver Resumo', callback_data: 'resumo' },
-            { text: '➕ Adicionar Mais', callback_data: 'adicionar' }
-          ],
-          [
-            { text: '❌ Remover', callback_data: `remove_${expenseId}` }
+    // Envia mensagem de confirmação apenas se solicitado
+    if (sendMessage) {
+      ctx.reply(`✅ Registrado: #${saleId} - ${formattedProduct} - R$ ${numericPrice.toFixed(2)}\n\nPara remover, use /remove ${saleId}`, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📊 Ver Resumo', callback_data: 'resumo' },
+              { text: '➕ Adicionar Mais', callback_data: 'adicionar' }
+            ],
+            [
+              { text: '❌ Remover', callback_data: `remove_${saleId}` }
+            ]
           ]
-        ]
-      }
-    });
+        }
+      });
+    }
+
+    // Retorna o ID da venda para uso em outras funções
+    return saleId;
   } catch (error) {
-    console.error('Erro ao processar despesa:', error);
-    ctx.reply('Ocorreu um erro ao processar sua mensagem. Tente novamente.');
+    console.error('Erro ao processar venda:', error);
+    if (sendMessage) {
+      ctx.reply('Ocorreu um erro ao processar sua mensagem. Tente novamente.');
+    }
+    return null;
   }
 }
 
-// Comando para remover um gasto
-bot.command('remove', async (ctx) => {
-  try {
-    const text = ctx.message.text;
-    const params = text.split(' ');
-
-    if (params.length !== 2) {
-      return ctx.reply('Uso correto: /remove [id]');
-    }
-
-    const expenseId = parseInt(params[1]);
-    if (isNaN(expenseId)) {
-      return ctx.reply('ID inválido. Use /remove seguido do número ID do gasto.');
-    }
-
-    const chatId = ctx.chat.id.toString();
-
-    if (!expensesStorage[chatId] || expensesStorage[chatId].length === 0) {
-      return ctx.reply('Não há gastos registrados para remover.');
-    }
-
-    const index = expensesStorage[chatId].findIndex(expense => expense.id === expenseId);
-
-    if (index === -1) {
-      return ctx.reply(`Não foi encontrado nenhum gasto com ID ${expenseId}.`);
-    }
-
-    const removedExpense = expensesStorage[chatId].splice(index, 1)[0];
-    ctx.reply(`✅ Removido: ${removedExpense.product} - R$ ${removedExpense.price.toFixed(2)}`);
-
-  } catch (error) {
-    console.error('Erro ao remover gasto:', error);
-    ctx.reply('Ocorreu um erro ao tentar remover o gasto. Tente novamente.');
-  }
-});
-
-// Função para salvar uma despesa no armazenamento
-function saveExpense(chatId, expense) {
-  if (!expensesStorage[chatId]) {
-    expensesStorage[chatId] = [];
-    expenseIdCounter[chatId] = 0;
+// Função para salvar uma venda no armazenamento
+function saveSale(chatId, sale) {
+  if (!salesStorage[chatId]) {
+    salesStorage[chatId] = [];
+    salesIdCounter[chatId] = 0;
   }
 
   // Incrementa o contador e adiciona ID único para este chat
-  expenseIdCounter[chatId]++;
-  expense.id = expenseIdCounter[chatId];
+  salesIdCounter[chatId]++;
+  sale.id = salesIdCounter[chatId];
 
-  expensesStorage[chatId].push(expense);
-  console.log(`Despesa salva para o chat ${chatId}:`, expense);
+  salesStorage[chatId].push(sale);
+  console.log(`Venda salva para o chat ${chatId}:`, sale);
 
-  return expense.id;
+  return sale.id;
 }
 
-// Função para buscar gastos do armazenamento
-function getExpensesFromStorage(chatId, daysBack = 1) {
-  const expenses = expensesStorage[chatId] || [];
+// Função para buscar vendas do armazenamento
+function getSalesFromStorage(chatId, daysBack = 1) {
+  const sales = salesStorage[chatId] || [];
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(now.getDate() - daysBack + 1); // +1 para incluir o dia atual
   startDate.setHours(0, 0, 0, 0);
 
-  // Filtra os gastos pela data
-  return expenses.filter(expense => {
-    const expenseDate = new Date(expense.date);
-    return expenseDate >= startDate;
+  // Filtra as vendas pela data
+  return sales.filter(sale => {
+    const saleDate = new Date(sale.date);
+    return saleDate >= startDate;
   });
 }
 
-// Função para formatar o resumo de despesas
-function formatExpensesSummary(expensesList) {
-  let summary = '📊 Resumo de Gastos:\n\n';
+// Função para formatar o resumo de vendas
+function formatSalesSummary(salesList) {
+  let summary = '📊 Resumo de Vendas:\n\n';
 
-  expensesList.forEach((expense) => {
-    summary += `#${expense.id} - ${expense.product}: R$ ${expense.price.toFixed(2)}\n`;
+  salesList.forEach((sale) => {
+    summary += `#${sale.id} - ${sale.product}: R$ ${sale.price.toFixed(2)}\n`;
   });
 
-  const total = expensesList.reduce((sum, expense) => sum + expense.price, 0);
+  const total = salesList.reduce((sum, sale) => sum + sale.price, 0);
   summary += `\n💰 Total: R$ ${total.toFixed(2)}`;
 
   return summary;
@@ -547,7 +516,7 @@ function getResumoKeyboard() {
           { text: '🧠 Análise IA', callback_data: 'analise' }
         ],
         [
-          { text: '➕ Adicionar Gasto', callback_data: 'adicionar' },
+          { text: '➕ Adicionar Venda', callback_data: 'adicionar' },
           { text: '⬅️ Voltar', callback_data: 'ajuda' }
         ]
       ]
@@ -559,9 +528,9 @@ function getResumoKeyboard() {
 function getResumoAdditionalButtons(expenses) {
   const buttons = [];
 
-  // Se há muitos gastos, oferece categorização
+  // Se há muitas vendas, oferece categorização
   if (expenses.length >= 5) {
-    buttons.push([{ text: '📊 Categorizar Gastos', callback_data: 'categorizar' }]);
+    buttons.push([{ text: '📊 Categorizar Vendas', callback_data: 'categorizar' }]);
   }
 
   // Botões padrão
@@ -584,24 +553,24 @@ schedule.scheduleJob('0 18 * * 0', async () => {
 
   for (const chatId of activeChats) {
     try {
-      const expenses = getExpensesFromStorage(chatId, 7); // Pega os dados da semana
+      const sales = getSalesFromStorage(chatId, 7); // Pega os dados da semana
 
-      if (expenses.length > 0) {
+      if (sales.length > 0) {
         // Prepara os dados para o modelo
-        const expensesData = expenses.map(e => `${e.product}: R$ ${e.price.toFixed(2)}`).join('\n');
-        const total = expenses.reduce((sum, e) => sum + e.price, 0);
+        const salesData = sales.map(s => `${s.product}: R$ ${s.price.toFixed(2)}`).join('\n');
+        const total = sales.reduce((sum, s) => sum + s.price, 0);
 
         // Constrói o prompt para o Gemini
         const prompt = `
-Analise os seguintes gastos de um usuário na última semana:
+Analise os seguintes dados de vendas de um usuário na última semana:
 
-${expensesData}
+${salesData}
 
 Total: R$ ${total.toFixed(2)}
 
 Forneça:
-1. Um breve resumo dos gastos da semana
-2. Uma dica de economia baseada nos padrões de compra
+1. Um breve resumo das vendas da semana
+2. Uma dica para aumentar as vendas baseada nos padrões observados
 3. Uma previsão para a próxima semana
 
 Responda em português, de forma amigável e concisa, em até 300 caracteres.
@@ -611,13 +580,13 @@ Responda em português, de forma amigável e concisa, em até 300 caracteres.
         const result = await model.generateContent(prompt);
         const aiAnalysis = result.response.text();
 
-        const summary = formatExpensesSummary(expenses);
+        const summary = formatSalesSummary(sales);
         await telegram.sendMessage(
           chatId,
-          `🌙 Resumo semanal de gastos:\n\n${summary}\n\n💡 *Insights da IA*:\n${aiAnalysis}`,
+          `🌙 Resumo semanal de vendas:\n\n${summary}\n\n💡 *Insights da IA*:\n${aiAnalysis}`,
           {
             parse_mode: 'Markdown',
-            ...getResumoAdditionalButtons(expenses)
+            ...getResumoAdditionalButtons(sales)
           }
         );
       }
@@ -634,14 +603,14 @@ schedule.scheduleJob('0 22 * * *', async () => {
 
   for (const chatId of activeChats) {
     try {
-      const expenses = getExpensesFromStorage(chatId, 1);
+      const sales = getSalesFromStorage(chatId, 1);
 
-      if (expenses.length > 0) {
-        const summary = formatExpensesSummary(expenses);
+      if (sales.length > 0) {
+        const summary = formatSalesSummary(sales);
         await telegram.sendMessage(
           chatId,
-          `🌙 Resumo diário de gastos:\n\n${summary}`,
-          getResumoAdditionalButtons(expenses)
+          `🌙 Resumo diário de vendas:\n\n${summary}`,
+          getResumoAdditionalButtons(sales)
         );
       }
     } catch (error) {
@@ -650,68 +619,68 @@ schedule.scheduleJob('0 22 * * *', async () => {
   }
 });
 
-// Handler para adicionar mais gastos
+// Handler para adicionar mais vendas
 bot.action('adicionar', async (ctx) => {
-  await ctx.answerCbQuery('Informe o novo gasto...');
-  ctx.reply('Informe um novo gasto no formato:\n"Nome do produto Preço"\n\nExemplos:\n- Café 5.50\n- Pizza R$25\n- Uber 15,90',
+  await ctx.answerCbQuery('Informe a nova venda...');
+  ctx.reply('Informe uma nova venda no formato:\n"Nome do produto Preço"\n\nExemplos:\n- Café 5.50\n- Pizza R$25\n- Uber 15,90',
     getMainKeyboard());
 });
 
-// Handler para remover gasto via botão
+// Handler para remover venda via botão
 bot.action(/remove_(\d+)/, async (ctx) => {
   try {
-    await ctx.answerCbQuery('Removendo gasto...');
+    await ctx.answerCbQuery('Removendo venda...');
 
-    const expenseId = parseInt(ctx.match[1]);
+    const saleId = parseInt(ctx.match[1]);
     const chatId = ctx.chat.id.toString();
 
-    if (!expensesStorage[chatId] || expensesStorage[chatId].length === 0) {
-      return ctx.editMessageText('Não há gastos registrados para remover.');
+    if (!salesStorage[chatId] || salesStorage[chatId].length === 0) {
+      return ctx.editMessageText('Não há vendas registradas para remover.');
     }
 
-    const index = expensesStorage[chatId].findIndex(expense => expense.id === expenseId);
+    const index = salesStorage[chatId].findIndex(sale => sale.id === saleId);
 
     if (index === -1) {
-      return ctx.editMessageText(`Não foi encontrado nenhum gasto com ID ${expenseId}.`);
+      return ctx.editMessageText(`Não foi encontrada nenhuma venda com ID ${saleId}.`);
     }
 
-    const removedExpense = expensesStorage[chatId].splice(index, 1)[0];
-    ctx.editMessageText(`✅ Removido: ${removedExpense.product} - R$ ${removedExpense.price.toFixed(2)}`,
+    const removedSale = salesStorage[chatId].splice(index, 1)[0];
+    ctx.editMessageText(`✅ Removido: ${removedSale.product} - R$ ${removedSale.price.toFixed(2)}`,
       getMainKeyboard());
   } catch (error) {
-    console.error('Erro ao remover gasto:', error);
+    console.error('Erro ao remover venda:', error);
     ctx.answerCbQuery('Ocorreu um erro. Tente novamente.');
   }
 });
 
-// Adicionar handler para categorização de gastos
+// Adicionar handler para categorização de vendas
 bot.action('categorizar', async (ctx) => {
   try {
-    await ctx.answerCbQuery('Categorizando seus gastos...');
+    await ctx.answerCbQuery('Categorizando suas vendas...');
 
     const chatId = ctx.chat.id.toString();
-    const expenses = getExpensesFromStorage(chatId, 30);
+    const sales = getSalesFromStorage(chatId, 30);
 
-    if (expenses.length === 0) {
-      return ctx.editMessageText('Não há gastos para categorizar.', getMainKeyboard());
+    if (sales.length === 0) {
+      return ctx.editMessageText('Não há vendas para categorizar.', getMainKeyboard());
     }
 
     // Preparar para categorização com IA
-    const expensesText = expenses.map(e => e.product).join(', ');
+    const salesText = sales.map(s => s.product).join(', ');
 
     const prompt = `
-Categorize os seguintes itens de despesa em categorias claras e úteis (ex: Alimentação, Transporte, Lazer, etc):
-${expensesText}
+Categorize os seguintes produtos vendidos em categorias claras e úteis (ex: Alimentação, Vestimenta, Eletrônicos, etc):
+${salesText}
 
-Responda com uma lista de categorias e seus respectivos itens no formato:
-categoria1: item1, item2
-categoria2: item3, item4
+Responda com uma lista de categorias e seus respectivos produtos no formato:
+categoria1: produto1, produto2
+categoria2: produto3, produto4
 
 Use no máximo 5 categorias principais. Seja objetivo e conciso.
 `;
 
     // Mensagem de aguarde
-    await ctx.editMessageText('🧠 Categorizando seus gastos... Aguarde um momento.');
+    await ctx.editMessageText('🧠 Categorizando suas vendas... Aguarde um momento.');
 
     // Obter categorização
     const result = await model.generateContent(prompt);
@@ -735,17 +704,17 @@ Use no máximo 5 categorias principais. Seja objetivo e conciso.
           const items = itemsText.split(',').map(i => i.trim().toLowerCase());
 
           // Somar valores dos itens dessa categoria
-          for (const expense of expenses) {
-            const productLower = expense.product.toLowerCase();
+          for (const sale of sales) {
+            const productLower = sale.product.toLowerCase();
             if (items.some(item => productLower.includes(item))) {
-              totalByCategory[categoryName] += expense.price;
+              totalByCategory[categoryName] += sale.price;
             }
           }
         }
       }
 
       // Adicionar totais por categoria
-      let categoryMessage = '📊 *Suas despesas por categoria:*\n\n';
+      let categoryMessage = '📊 *Suas vendas por categoria:*\n\n';
       categoryMessage += categories + '\n\n';
       categoryMessage += '*Totais por categoria:*\n';
 
@@ -759,15 +728,189 @@ Use no máximo 5 categorias principais. Seja objetivo e conciso.
       });
     } catch (error) {
       console.error('Erro ao processar categorias:', error);
-      ctx.editMessageText(`📊 *Categorias de gastos:*\n\n${categories}`, {
+      ctx.editMessageText(`📊 *Categorias de vendas:*\n\n${categories}`, {
         parse_mode: 'Markdown',
         ...getResumoKeyboard()
       });
     }
   } catch (error) {
-    console.error('Erro ao categorizar gastos:', error);
-    ctx.editMessageText('Não foi possível categorizar seus gastos. Tente novamente mais tarde.',
+    console.error('Erro ao categorizar vendas:', error);
+    ctx.editMessageText('Não foi possível categorizar suas vendas. Tente novamente mais tarde.',
       getMainKeyboard());
+  }
+});
+
+// Comando para remover uma venda
+bot.command('remove', async (ctx) => {
+  try {
+    const text = ctx.message.text;
+    const params = text.split(' ');
+
+    if (params.length !== 2) {
+      return ctx.reply('Uso correto: /remove [id]');
+    }
+
+    const saleId = parseInt(params[1]);
+    if (isNaN(saleId)) {
+      return ctx.reply('ID inválido. Use /remove seguido do número ID da venda.');
+    }
+
+    const chatId = ctx.chat.id.toString();
+
+    if (!salesStorage[chatId] || salesStorage[chatId].length === 0) {
+      return ctx.reply('Não há vendas registradas para remover.');
+    }
+
+    const index = salesStorage[chatId].findIndex(sale => sale.id === saleId);
+
+    if (index === -1) {
+      return ctx.reply(`Não foi encontrada nenhuma venda com ID ${saleId}.`);
+    }
+
+    const removedSale = salesStorage[chatId].splice(index, 1)[0];
+    ctx.reply(`✅ Removido: ${removedSale.product} - R$ ${removedSale.price.toFixed(2)}`);
+
+  } catch (error) {
+    console.error('Erro ao remover venda:', error);
+    ctx.reply('Ocorreu um erro ao tentar remover a venda. Tente novamente.');
+  }
+});
+
+// Add a message handler for processing sales via text
+bot.on('message', async (ctx) => {
+  // Only process text messages
+  if (!ctx.message.text) return;
+
+  // Skip if it's a command (starts with /)
+  if (ctx.message.text.startsWith('/')) return;
+
+  const text = ctx.message.text.trim();
+  console.log(`Nova mensagem recebida: "${text}"`);
+
+  try {
+    // Sending waiting message
+    const waitingMsg = await ctx.reply('🧠 Interpretando sua mensagem... Aguarde um momento.');
+
+    // Constrói o prompt para o Gemini
+    const prompt = `
+Analise a seguinte mensagem de venda em português e extraia o produto/serviço vendido, o valor e a quantidade:
+"${text}"
+
+Exemplos de entradas e suas interpretações:
+1. "Vendi café hoje por 5 reais" → produto: café, valor: 5, quantidade: 1
+2. "Recebi 150,90 pela venda do bolo" → produto: bolo, valor: 150.90, quantidade: 1
+3. "Cliente comprou almoço por 32 reais" → produto: almoço, valor: 32, quantidade: 1
+4. "Camiseta 25" → produto: camiseta, valor: 25, quantidade: 1
+5. "Vendi produtos do mercado, recebi 175,50" → produto: produtos mercado, valor: 175.50, quantidade: 1
+6. "Vendi 4 camisetas por 40 reais" → produto: camiseta, valor: 40, quantidade: 4
+7. "Entreguei 3 bolos por 75 reais no total" → produto: bolo, valor: 75, quantidade: 3
+8. "Vendi 5 cafés hoje a 25 reais" → produto: café, valor: 25, quantidade: 5
+
+Responda APENAS com um JSON no formato:
+{
+  "produto": "nome do produto ou serviço",
+  "valor": número (com ponto como separador decimal),
+  "quantidade": número inteiro
+}
+
+Se não for possível extrair o produto e valor, responda com:
+{
+  "erro": "Não foi possível identificar o produto e valor"
+}
+
+IMPORTANTE: Não inclua formatação markdown, blocos de código ou outras marcações. Responda apenas com o objeto JSON puro.
+`;
+
+    // Usando Gemini para interpretar a entrada
+    const result = await model.generateContent(prompt);
+    const aiResponse = result.response.text().trim();
+    console.log("Resposta da IA:", aiResponse);
+
+    try {
+      // Remover possíveis marcações markdown da resposta
+      let cleanResponse = aiResponse;
+      if (cleanResponse.includes('```')) {
+        // Remove blocos de código, pegando apenas o conteúdo dentro do bloco
+        cleanResponse = cleanResponse.replace(/```(?:json)?([^`]*)```/gs, '$1').trim();
+      }
+
+      // Tenta analisar a resposta como JSON
+      const parsedResponse = JSON.parse(cleanResponse);
+      console.log("JSON interpretado:", parsedResponse);
+
+      // Remove mensagem de aguarde
+      await ctx.telegram.deleteMessage(ctx.chat.id, waitingMsg.message_id).catch(e => { });
+
+      if (parsedResponse.erro) {
+        // IA não conseguiu interpretar
+        ctx.reply(
+          'Não consegui entender sua mensagem. Por favor, use um formato como:\n' +
+          '"Café 5.50" ou "Pizza R$25" ou "Camiseta R$15,90"',
+          getMainKeyboard()
+        );
+      } else {
+        // Extraiu produto, valor e quantidade com sucesso
+        const product = parsedResponse.produto;
+        const price = parseFloat(parsedResponse.valor);
+        const quantity = parseInt(parsedResponse.quantidade) || 1;
+
+        // Validação extra dos valores
+        if (isNaN(price) || price <= 0) {
+          return ctx.reply('Não consegui entender o valor da venda. Por favor, tente novamente com um valor válido.');
+        }
+
+        if (isNaN(quantity) || quantity <= 0) {
+          return ctx.reply('Não consegui entender a quantidade. Por favor, tente novamente.');
+        }
+
+        // Calcula o preço individual se a quantidade for maior que 1
+        const singlePrice = quantity > 1 ? price / quantity : price;
+        console.log(`Venda interpretada: ${quantity}x ${product} a R$ ${singlePrice.toFixed(2)} cada (total: R$ ${price.toFixed(2)})`);
+
+        // Codifica o produto em base64 para evitar problemas com caracteres especiais no callback_data
+        const encodedProduct = Buffer.from(product).toString('base64');
+
+        // Prepara mensagem de confirmação
+        let confirmMessage = '';
+        if (quantity > 1) {
+          confirmMessage = `Entendi que você vendeu ${quantity} unidades de "${product}" por R$ ${price.toFixed(2)} no total (R$ ${singlePrice.toFixed(2)} cada). Está correto?`;
+        } else {
+          confirmMessage = `Entendi que você vendeu "${product}" por R$ ${price.toFixed(2)}. Está correto?`;
+        }
+
+        // Garantir que price seja passado como string com casas decimais (para evitar problemas com números inteiros)
+        const priceStr = price.toFixed(2).replace(/\.00$/, ''); // Remove .00 se for um valor inteiro
+
+        // Cria o callback_data garantindo que os valores sejam strings para evitar problemas
+        const callbackData = `confirm_${encodedProduct}_${priceStr}_${quantity.toString()}`;
+        console.log(`Criando callback_data: ${callbackData}`);
+
+        // Confirma com o usuário
+        ctx.reply(
+          confirmMessage,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '✅ Sim, registrar', callback_data: callbackData },
+                  { text: '❌ Não, cancelar', callback_data: 'cancel_sale' }
+                ]
+              ]
+            }
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao interpretar resposta da IA:', error);
+      ctx.reply(
+        'Desculpe, houve um erro ao interpretar sua mensagem. Por favor, tente novamente usando um formato como:\n' +
+        '"Café 5.50" ou "Pizza R$25"',
+        getMainKeyboard()
+      );
+    }
+  } catch (error) {
+    console.error('Erro ao processar mensagem:', error);
+    ctx.reply('Ocorreu um erro ao processar sua mensagem. Tente novamente.');
   }
 });
 

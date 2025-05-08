@@ -1,7 +1,7 @@
 {
   "name": "telegram-expense-tracker-bot",
   "version": "1.0.0",
-  "description": "Bot de Telegram para controle de gastos",
+  "description": "Bot de Telegram para controle de vendas e lucros",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
