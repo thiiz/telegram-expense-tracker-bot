@@ -1,76 +1,89 @@
-# �� Bot de Controle de Vendas com IA
+🤖 AI-Powered Sales Control Bot
 
-Um bot para Telegram que permite registrar e analisar vendas e lucros, com funcionalidades inteligentes fornecidas pelo Google Gemini API.
+A Telegram bot that allows you to log and analyze sales and profits, with smart features powered by the Google Gemini API.
+✨ Features
 
-## ✨ Funcionalidades
+    Daily sales logging
 
-- Registro de vendas diárias
-- Resumo das vendas do dia
-- Total de vendas do mês
-- Análise de vendas usando IA (Google Gemini)
-- Insights para melhorar as vendas
-- Categorização automática de produtos
-- Envio automático de resumos diários e semanais
+    Daily sales summary
 
-## 🔧 Tecnologias
+    Monthly sales total
 
-- Node.js
-- [Telegraf](https://github.com/telegraf/telegraf) - Framework moderno para criação de bots Telegram
-- [Google Gemini API](https://ai.google.dev/) - IA generativa do Google
-- [Node Schedule](https://www.npmjs.com/package/node-schedule) - Agendamento de tarefas
+    AI-powered sales analysis (Google Gemini)
 
-## 🚀 Configuração e Uso
+    Insights to improve sales
 
-### Pré-requisitos
+    Automatic product categorization
 
-- Node.js v14+
-- Um bot do Telegram (criado via [@BotFather](https://t.me/botfather))
-- Uma chave de API do Google Gemini
+    Automatic sending of daily and weekly summaries
 
-### Variáveis de ambiente
+🔧 Technologies
 
-Crie um arquivo `.env` na raiz do projeto com:
+    Node.js
 
-```
-BOT_TOKEN=seu_token_do_telegram
-GEMINI_API_KEY=sua_chave_api_gemini
-ACTIVE_CHATS=id_do_chat1,id_do_chat2
-```
+    Telegraf – Modern framework for building Telegram bots
 
-### Instalação
+    Google Gemini API – Google’s generative AI
 
-```bash
+    Node Schedule – Task scheduling
+
+🚀 Setup and Usage
+Prerequisites
+
+    Node.js v14+
+
+    A Telegram bot (created via @BotFather)
+
+    A Google Gemini API key
+
+Environment Variables
+
+Create a .env file in the root directory of the project with:
+
+BOT_TOKEN=your_telegram_bot_token
+GEMINI_API_KEY=your_gemini_api_key
+ACTIVE_CHATS=chat_id1,chat_id2
+
+Installation
+
 npm install
 npm start
-```
 
-## 📋 Comandos
+📋 Commands
 
-- `/start` - Inicia o bot e mostra a ajuda
-- `/resumo` - Exibe o resumo das vendas de hoje
-- `/total` - Exibe o total vendido este mês
-- `/analise` - Fornece uma análise das suas vendas usando IA
-- `/remove [id]` - Remove uma venda específica
+    /start – Starts the bot and displays help
 
-## 💡 Como Usar
+    /resumo – Shows today's sales summary
 
-1. Inicie uma conversa com o bot enviando `/start`
-2. Registre uma venda enviando mensagens no formato: `Nome do produto preço`
-   - Exemplos: `Café 5.50` ou `Pizza 25`
-   - Também pode usar linguagem natural: `Vendi café por 10 reais`
+    /total – Displays total sales for the month
 
-## 🧠 Inteligência Artificial
+    /analise – Provides an AI analysis of your sales
 
-O bot utiliza o Google Gemini API para:
+    /remove [id] – Removes a specific sale
 
-- **Análise sob demanda**: Use o comando `/analise` para obter insights sobre suas vendas dos últimos 30 dias
-- **Resumos semanais**: Receba automaticamente um resumo semanal com análise das suas vendas
-- **Sugestões de melhoria**: A IA identifica padrões de vendas e sugere formas de aumentar seus lucros
+💡 How to Use
 
-## 📝 Notas
+    Start a conversation with the bot by sending /start
 
-Este bot armazena dados em memória e é destinado a fins educacionais. Para uso em produção, seria necessário implementar um armazenamento persistente (banco de dados).
+    Log a sale by sending messages in the format: Product name price
 
-## 📄 Licença
+        Examples: Coffee 5.50 or Pizza 25
 
-Este projeto está licenciado sob a licença MIT.
+        You can also use natural language: Sold coffee for 10 reais
+
+🧠 Artificial Intelligence
+
+The bot uses the Google Gemini API for:
+
+    On-demand analysis: Use the /analise command to get insights on your sales from the past 30 days
+
+    Weekly summaries: Automatically receive a weekly summary with analysis of your sales
+
+    Improvement suggestions: The AI detects sales patterns and suggests ways to increase your profits
+
+📝 Notes
+
+This bot stores data in memory and is intended for educational purposes. For production use, persistent storage (e.g., a database) would be necessary.
+📄 License
+
+This project is licensed under the MIT License.
